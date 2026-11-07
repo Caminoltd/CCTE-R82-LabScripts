@@ -1,0 +1,92 @@
+#!/bin/bash
+#
+# Script Name: lab9a_start
+# Description: Run command - labstart lab9a
+# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+
+TMP_OTPT="/tmp/lab9a.json"
+TMP_ERR="/tmp/lab9a.err"
+SID="" 
+
+discard_close_session() {
+    verbose_echo "Discarding all changes"
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR   
+    echo -e "\nSetup ended"
+    exit $1
+}
+
+# Creating session
+verbose_echo "Creating login session"
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+require_sid
+trap lab_interrupted INT TERM HUP
+
+if mgmt_cli show vpn-community-star name Bravo2AlphaVPN --session-id "$SID" -f json > /dev/null 2>&1; then
+    verbose_echo "Bravo2AlphaVPN community already exists..Skipping"
+    lab_already_set_up lab9a "the Bravo2AlphaVPN community already exists"
+    discard_close_session 0
+fi
+
+verbose_echo "Adding Bravo2AlphaVPN community"
+
+mgmt_cli add vpn-community-star name Bravo2AlphaVPN center-gateways A-GW-Cluster disable-nat true encryption-method "ikev2 only" ike-phase-1.encryption-algorithm "aes-gcm-256" ike-phase-1.data-integrity "aes-xcbc" ike-phase-1.diffie-hellman-group "group-21" ike-phase-1.ike-p1-rekey-time 8 ike-phase-1.ike-p1-rekey-time-unit "hours" ike-phase-2.encryption-algorithm "aes-256" ike-phase-2.data-integrity "sha512" ike-phase-2.ike-p2-use-pfs true ike-phase-2.ike-p2-pfs-dh-grp "group-21" ike-phase-2.ike-p2-rekey-time 1 ike-phase-2.ike-p2-rekey-time-unit "hours" link-selection-mode "legacy" tunnel-granularity "per_subnet" vpn-routing "to center and to other satellites" routing-mode "domain_based" color "firebrick" comments "New VPN community between B-GW and A-GW-Cluster" --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+      echo -e "\nERROR: Failed to add vpn community"
+      cat $TMP_OTPT
+      discard_close_session 1
+fi
+
+verbose_echo "Removing A-GW-Cluster from Alpha2BravoVPN community"
+mgmt_cli set vpn-community-meshed name "Alpha2BravoVPN" gateways.remove "A-GW-Cluster" --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+      echo -e "\nCould not remove A-GW-Cluster from Alpha2BravoVPN"
+      cat $TMP_OTPT
+fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0

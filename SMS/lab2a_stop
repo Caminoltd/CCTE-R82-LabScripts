@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# Script Name: lab2a_stop
+# Description: Run command - labstop lab2a
+# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+
+LAUNCH_MODE=background
+#VERBOSE=false
+
+if [[ -z "$1" ]]; then
+    echo "Usage: $0 <PID>"
+    exit 1
+fi
+
+PROCESS_ID=$1
+shift
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+{
+    verbose_echo "Killing process id $PROCESS_ID"
+    kill -9 "$PROCESS_ID"
+    verbose_echo "Starting CPM"
+    $FWDIR/scripts/cpm_wd_start.sh > /dev/null
+    verbose_echo "Checking if CPM has started .."
+    verbose_echo Please wait for the services to be loaded....
+
+    CPM_UP=false
+    for i in {1..12}; do
+        $FWDIR/scripts/cpm_status.sh > /dev/null
+        if [ $? -eq 1 ]; then CPM_UP=true; break; fi
+        verbose_echo "Still waiting for CPM to come up..."
+        sleep 10
+    done
+    if [[ "$CPM_UP" != true ]]; then
+        echo -e  "\nIt is taking too long to load"
+        echo -e "Please check api status after some time"
+    fi
+    echo -e "\nSetup completed"
+} 2>/dev/null

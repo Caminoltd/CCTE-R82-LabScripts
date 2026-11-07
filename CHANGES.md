@@ -1,0 +1,51 @@
+# Changes in 2.2.1 (7 Nov 2026)
+
+| File | Change |
+| --- | --- |
+| `labmenu` | Before running an action, waits for any policy installation started in the last 10 minutes to finish. Running Revert and then Start straight away made the two sets of installs collide, and the new ones failed. After Start, Stop or Revert, waits for the installations the script started and shows each result, including the reason for a failure (for example the intended B-GW failure in Lab 8A). Uses only jq 1.4 features (the version on Gaia R82) |
+| `lab8a_stop` | Counts settings it could not apply. If any, it prints a WARNING after "Setup completed" (for example when the Media Access rule is missing because the lab was reverted) and exits with code 2 |
+
+# Changes in 2.2.0 (Camino, 7 Nov 2026)
+
+Base: the Check Point scripts in the Skillable lab image (dated 6 Mar 2026, version 2.1.1/2.1.2).
+Every lab guide command and every normal message is unchanged. `diff -r original/ SMS/` shows each change.
+
+## All hosts
+
+| File | Change |
+| --- | --- |
+| `lab_script_functions` | `export VERBOSE`, so `-v` works before or after the lab name. New helpers: `valid_lab_name`, `require_sid`, `lab_interrupted` (Ctrl-C = discard + logout), `lab_already_set_up` (second-run message), `show_api_error` |
+| `labstart` | Refuses names that are not `lab<number><letter>` |
+| `labstop`, `labrevert` | Same name check. `labrevert` on a lab with no revert script says it runs the stop script. When a background lab was started twice, both copies are stopped |
+| `labmenu` | New: menu that runs the lab guide commands |
+| `VERSION` | New: `2.2.0` |
+
+## A-SMS / A-SMS-02
+
+| Lab | Change |
+| --- | --- |
+| 2a | `lab2a_stop`: the "taking too long" warning no longer appears when CPM came up on the 12th check, and the stray text after it is gone |
+| 2b | Waiting dots on A-SMS-02 print every 90 s (the test was always true). Ctrl-C or a dropped session on A-SMS removes the reject route to A-SMS-02. Uses `$TMP_OTPT` throughout. Header comments corrected |
+| 3a | `pgrep -x` matches the exact process name |
+| 5a | Ctrl-C discards and logs out. Login without a session id stops with an error |
+| 6a | Second `labstart` explains that the lab is already set up. Errors show the API message. `lab6a_stop` failures exit with code 1 and log out |
+| 8a | Second `labstart` explains that the lab is already set up. "Could not create access role" now starts with `ERROR:` and shows the reason. `lab8a_revert` failures exit with code 1 |
+| 9a | `labstart` twice: the second run says the lab is already set up. `labstop` twice: no error, A-GW-Cluster is put back in Alpha2BravoVPN |
+
+## A-GW-01 / A-GW-02
+
+| Lab | Change |
+| --- | --- |
+| 4a | `pgrep -x` matches the exact process name (`cpd`) |
+
+## Not changed on purpose
+
+`install-policy --sync false` and "Kindly check policy installation status in SmartConsole"; the
+faults each lab creates; `/tmp/labX.json` file names; message typos; the `TikTok` application name
+(already correct in the lab image; the ATC portal zip has `TikTokd` on line 74 of `lab8a_start`).
+
+## Tested on 7 Nov 2026 (Skillable CCTE R82 lab)
+
+Install and `-Restore` on all four hosts. labstart/labstop for 2a, 3a, 4a, 5a, 6a, 8a and 9a, each run
+twice. labrevert for 3a (stop-script path) and 8a. Interrupting 5a: session discarded, no locks. Menu
+navigation and status on A-SMS. **Lab 2b was not run end to end** (it needs both servers driven by hand).

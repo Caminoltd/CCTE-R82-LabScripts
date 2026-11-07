@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# Script Name: labstop / labrevert
+# Description: Run command - labstop / labrevert <lab no.>
+# Version: 2.1.2
+
+#VERBOSE=false
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+source "$SCRIPT_DIR/lab_script_functions"
+
+case "$1" in
+    -v|--verbose)
+    VERBOSE=true
+    shift        
+    ;;
+    -s|--silent)
+    VERBOSE=false
+    shift
+    ;;
+esac
+
+if [[ "$VERBOSE" == false ]]; then
+    echo -ne "\rWorking .."
+fi
+
+labno="$1"
+if [[ -z "$labno" ]]; then
+    echo "Error: You must provide a lab name."
+    echo "Usage: $0 <lab name>"
+    exit 1
+fi
+
+KILL_SCRIPT_NAME="${labno}_start"
+
+if [[ $(basename "$0") == "labstop" ]]; then
+    SCRIPT_NAME="${labno}_stop"
+    SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+    verbose_echo "Checking script file existence"
+    if [[ ! -f "$SCRIPT_PATH" || ! -x "$SCRIPT_PATH" ]]; then
+        echo "Script file $SCRIPT_PATH does not exist or is not an executable"
+        exit 1
+    fi
+elif [[ $(basename "$0") == "labrevert" ]]; then
+    SCRIPT_NAME="${labno}_revert"
+    SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+    verbose_echo "Checking revert script file existence"
+    if [[ ! -f "$SCRIPT_PATH" || ! -x "$SCRIPT_PATH" ]]; then
+        verbose_echo "Revert script does not exist, checking for stop script"
+        SCRIPT_NAME="${labno}_stop"
+        SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+
+        if [[ ! -f "$SCRIPT_PATH" || ! -x "$SCRIPT_PATH" ]]; then
+            echo "Revert or Stop scripts for $labno do not exist or are not set as executable"
+            exit 1
+        fi
+    fi
+fi
+
+shift
+LAUNCH_MODE=$(sed -n 's/.*LAUNCH_MODE=[[:space:]]*\([a-zA-Z]*\).* */\1/p' "$SCRIPT_PATH" | head -1)
+
+if [[ "${LAUNCH_MODE,,}" != "background" ]]; then
+    verbose_echo "Starting $SCRIPT_NAME ..."
+    exec "$SCRIPT_PATH" "$@" 
+else
+    verbose_echo "Checking if $labno is running"
+    PID=$(pgrep -x "$KILL_SCRIPT_NAME")
+    if [[ -n "$PID" ]]; then
+        verbose_echo "Starting $SCRIPT_NAME ..."
+        exec "$SCRIPT_PATH" "$PID" "$@" 
+    else
+        echo -e "\n$labno is not running"
+        exit 1
+    fi
+fi

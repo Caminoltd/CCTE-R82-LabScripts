@@ -1,0 +1,127 @@
+#!/bin/bash
+#
+# Script Name: lab8a_revert
+# Description: Run command - labrevert lab8a
+# Version: 2.1.1
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+LAYER_NAME="Web Content layer"  
+RULE_NAME="Media Access rule"
+MARKETING_RULE="Marketing Access rule"
+ACCESS_ROLE="Media Team"
+EXTERNAL_VIP="203.0.113.1"
+INTERNAL_VIP="10.1.1.1"
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+
+TMP_OTPT="/tmp/lab8a.json"
+TMP_ERR="/tmp/lab8a.err"
+SID="" 
+
+
+discard_close_session() {
+    verbose_echo "Discarding all changes"
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR   
+    echo -e "\nSetup ended"
+    exit $1
+}
+
+# Creating session
+verbose_echo "Creating login session"
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+
+# Set identity awareness on B-GW
+verbose_echo "Unsetting identity awareness on B-GW"
+mgmt_cli set simple-gateway name "B-GW" identity-awareness false identity-awareness-settings.identity-sharing-settings.receive-from-other-gateways false identity-awareness-settings.identity-sharing-settings.receive-from.remove "A-GW-CLUSTER" --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then   
+    echo -e "\nCould not revert Identity Awareness options in B-GW"
+fi
+
+# Set cluster properties
+verbose_echo "Setting cluster properties"
+mgmt_cli set simple-cluster name "A-GW-CLUSTER" ip-address "$INTERNAL_VIP" identity-awareness-settings.identity-sharing-settings.share-with-other-gateways false vpn-settings.link-selection.ip-selection "use-selected-address-from-topology" vpn-settings.link-selection.ip-address "$EXTERNAL_VIP" --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nCould not revert A-GW-CLUSTER settings"
+fi
+
+verbose_echo "Adding A-GW-Cluster to install on column in $MARKETING_RULE"
+mgmt_cli set access-rule name "$MARKETING_RULE" layer "$LAYER_NAME" install-on "A-GW-CLUSTER"  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nCould not revert '$MARKETING_RULE' policy settings"
+fi
+
+# Remove rule if it exists
+verbose_echo "Deleting rule '$RULE_NAME' from '$LAYER_NAME'..."
+
+mgmt_cli delete-access-rule name "$RULE_NAME" layer "$LAYER_NAME"  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    errcode=$(jq -r ".code" $TMP_OTPT)
+    verbose_echo "Error code is $errcode"
+    if [ $errcode == "generic_err_object_not_found" ]; then
+        verbose_echo "Rule does not exist. Skipping rule deletion."
+    else
+        echo -e "\nERROR: Failed to delete rule '$RULE_NAME'"
+        discard_close_session 0
+    fi
+else
+    verbose_echo "Rule deleted successfully"
+fi
+
+verbose_echo "Deleting access role - $ACCESS_ROLE"
+mgmt_cli delete-access-role name "$ACCESS_ROLE" -f json --session-id "$SID" > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    errcode=$(jq -r ".code" $TMP_OTPT)
+    verbose_echo "Error code is $errcode"
+    if [ $errcode == "generic_err_object_not_found" ]; then
+        verbose_echo "Role does not exist. Skipping rule deletion."
+    else
+       echo -e "\nCould not delete access role. Aborting"
+       discard_close_session 0
+    fi
+else
+    verbose_echo "Access role $ACCESS_ROLE deleted"
+fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0

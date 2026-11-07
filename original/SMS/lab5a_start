@@ -1,0 +1,175 @@
+#!/bin/bash
+#
+# Script Name: lab5a_start
+# Description: Run command - labstart lab5a
+# Version: 2.1.2
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+LAYER_NAME_ALPHA="Alpha-Standard Network"  
+LAYER_NAME_BRAVO="Bravo-Standard Network"  
+LAYER_NAME_DMZ="DMZ Traffic layer"  
+
+RULE_NAME_DMZ="DMZ Internal Access rule"
+RULE_NAME_VPN="VPN rule"
+RULE_NAME_DMZ_CLEANUP="DMZ Cleanup rule"
+
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+
+RULE_NAME=""
+LAYER_NAME=""
+SERVICE_NAME=""
+
+TMP_OTPT="/tmp/lab5a.json"
+TMP_ERR="/tmp/lab5a.err"
+SID="" 
+
+discard_close_session() {
+    verbose_echo "Discarding changes"
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR   
+    echo -e "\nSetup ended"
+    exit $1
+}
+
+check_service_in_rule() {
+    mgmt_cli show-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+       echo -e "\nCould not find rule : $RULE_NAME in layer : $LAYER_NAME"
+       discard_close_session 1
+    fi
+
+    if ! jq -e --arg svc "$SERVICE_NAME" '.service[].name | select(. == $svc)' $TMP_OTPT > /dev/null; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+remove_service_from_rule() {
+    if ! check_service_in_rule; then 
+        verbose_echo "Service $SERVICE_NAME not found in rule $RULE_NAME - Skipping"
+        return 1
+    fi
+    
+    if [[ $(jq '.service | length' "$TMP_OTPT") -eq 1 ]]; then
+        verbose_echo "Setting service Any in $RULE_NAME"
+        mgmt_cli set-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" service "Any" > $TMP_OTPT 2> $TMP_ERR
+    else
+        verbose_echo "Removing $SERVICE_NAME from $RULE_NAME"
+        mgmt_cli set-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" service.remove $SERVICE_NAME > $TMP_OTPT 2> $TMP_ERR
+    fi
+    
+    if [ $? -ne 0 ]; then
+       echo -e "\nCould not change rule : $RULE_NAME in layer : $LAYER_NAME"
+       discard_close_session 1
+    fi
+   return 0
+}
+
+add_service_to_rule() {
+    if check_service_in_rule; then 
+        verbose_echo "Service $SERVICE_NAME already exists in rule $RULE_NAME - Skipping"
+        return 1
+    fi
+   
+   verbose_echo "Adding service $SERVICE_NAME in rule $RULE_NAME"
+   mgmt_cli set-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" service.add $SERVICE_NAME > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+       echo -e "\nCould not change rule : $RULE_NAME in layer : $LAYER_NAME"
+       discard_close_session 1
+    fi
+   return 0
+}
+
+# Creating session
+verbose_echo "Creating login session"
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+
+RULE_NAME=$RULE_NAME_VPN
+
+# Removing RDP svcs from Alpha and Bravo VPN rules
+verbose_echo "Removing RDP services from VPN rules"
+for LAYER_NAME in "$LAYER_NAME_ALPHA" "$LAYER_NAME_BRAVO"; do
+    for SERVICE_NAME in "Remote_Desktop_Protocol" "Remote_Desktop_Protocol_UDP"; do
+        if remove_service_from_rule; then
+            verbose_echo "Service $SERVICE_NAME removed from $RULE_NAME in  $LAYER_NAME"
+        fi
+    done
+done
+
+RULE_NAME=$RULE_NAME_DMZ
+LAYER_NAME=$LAYER_NAME_DMZ
+
+# Move DMZ internal access rule to top
+verbose_echo "Moving DMZ internal access rule to top"
+mgmt_cli set-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" new-position 1 > $TMP_OTPT 2> $TMP_ERR
+ if [ $? -ne 0 ]; then
+    echo -e "\nCould not move rule : $RULE_NAME"
+    discard_close_session 1
+else 
+    verbose_echo "Moved $RULE_NAME to position 1"
+ fi
+
+# Add http/s svcs to DMZ internal access rule
+verbose_echo "Adding HTTP/s services to DMZ Internal access rule"
+ for SERVICE_NAME in "http" "https"; do
+    if add_service_to_rule; then
+        verbose_echo "Service $SERVICE_NAME added to $RULE_NAME in  $LAYER_NAME"
+    fi
+ done
+
+RULE_NAME=$RULE_NAME_DMZ_CLEANUP
+
+# Change DMZ cleanup track to None
+verbose_echo "Chaning track in DMZ cleanup rule"
+mgmt_cli set-access-rule name "$RULE_NAME" layer "$LAYER_NAME" -f json --session-id "$SID" track "none" > $TMP_OTPT 2> $TMP_ERR
+ if [ $? -ne 0 ]; then
+    echo -e "\nCould not set track on rule : $RULE_NAME"
+    discard_close_session 1
+ else 
+    verbose_echo "Set track in $RULE_NAME to none"
+ fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0

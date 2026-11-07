@@ -1,0 +1,184 @@
+#!/bin/bash
+#
+# Script Name: lab2b_start
+# Description: Run command - labstart lab2b
+# Version: 2.1.2
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+
+HOSTNAME=$(hostname)
+A_SMS_STATE=""
+A_SMS_02_STATE=""
+NEW_LDAP_COLOR="orange"
+NEW_LDAP_COMMENT="Services for LDAP connectivity"
+
+TMP_OTPT="/tmp/lab2b.json"
+TMP_ERR="/tmp/lab2b.err"
+
+get_ha_states() {
+    verbose_echo "Getting state of Management HA"
+    mgmt_cli -f json -r true show ha-state > $TMP_OTPT 2> $TMP_ERR
+    if [[ $? -ne 0 ]]; then
+       echo -e "\nUnable to get state of Management HA"
+       exit 1
+    fi
+    A_SMS_STATE=$(jq -r ' .domains[].servers[] | select(.name=="A-SMS") | ."ha-state"'  $TMP_OTPT)
+    A_SMS_02_STATE=$(jq -r ' .domains[].servers[] | select(.name=="A-SMS-02") | ."ha-state"'  $TMP_OTPT) 
+    verbose_echo "States - A-SMS is $A_SMS_STATE and A-SMS-02 is $A_SMS_02_STATE"
+}
+
+check_reject_route_exists() {
+    verbose_echo "Checking if route to A-SMS-02 is rejected"
+    clish -c "show route static" | grep -q '10.1.1.111/32.*is a reject route'
+  }
+
+restore_connectivity() {
+    clish -c "lock database override" > /dev/null 2>&1
+    clish -c "set static-route 10.1.1.111/32 off"  > $TMP_OTPT 2> $TMP_ERR
+    if ! check_reject_route_exists; then
+        verbose_echo "Connectivity to A-SMS-02 restored"
+    else
+        echo -e "\nError restoring connectivity to A-SMS-02, please check with administrator"
+        exit 1
+    fi
+}
+
+sync_sms2() {
+    if [[ $(mgmt_cli -f json -r true show ha-status | jq -r '."successfully-synced"') != true ]]; then
+        verbose_echo "Synchronizing A-SMS-02. Please wait, this can take a while..."
+        mgmt_cli -f json -r true ha-full-sync name "A-SMS-02"  > $TMP_OTPT 2> $TMP_ERR
+        if [[ $? -eq 0 ]]; then
+            verbose_echo "Synched successfully!"
+        else
+            echo -e "\nSynchronization failed"
+            jq -r '.message' $TMP_OTPT 2> /dev/null
+            cat $TMP_ERR
+            exit 1
+        fi
+    else
+        verbose_echo "Standby is synchronized"
+    fi
+
+}
+
+check_ping() {
+     ping -c 1 -W 2 10.1.1.101 > /dev/null 2>&1
+}
+
+get_ha_states
+
+if [[ "$HOSTNAME" == "A-SMS" ]]; then
+    if ! [[ "$A_SMS_STATE" == "active" && "$A_SMS_02_STATE" == "standby" ]]; then
+        echo -e "\nError - Before running this script please ensure A-SMS is active and A-SMS-02 is in Standby mode and scynchronized"
+        exit 1
+    fi
+    
+    sync_sms2
+    
+    verbose_echo "Adding reject route"
+    clish -c "lock database override" > /dev/null 2>&1
+    clish -c "set static-route 10.1.1.111/32 nexthop reject" > $TMP_OTPT 2> $TMP_ERR
+    if check_reject_route_exists; then
+        verbose_echo "Temporarily breaking connectivity to A-SMS-02"
+    else
+        echo -e "\nError breaking connectivity to A-SMS-02, please check with administrator"
+        exit 1
+    fi
+    echo -e "\nKindly run the same script on A-SMS-02 now and then exit this script"
+    sleep 5
+    while true; do
+        read -rp 'Type "exit" to restore connectivity and continue: ' input
+        [[ "$input" == "exit" ]] && break
+    done
+    
+    restore_connectivity
+    echo -e "\nSetup completed"
+
+elif [[ "$HOSTNAME" == "A-SMS-02" ]]; then
+    if ! [[ "$A_SMS_02_STATE" == "standby" ]]; then
+        echo -e "\nError - Before running this script A-SMS-02 is expected to be in Standby mode"
+        exit 1
+    fi
+
+    echo -e "\n"
+    read -rp "Has the same script been started on A-SMS? (y/n): " answer
+    case "$answer" in
+            [Yy]|[Yy][Ee][Ss])
+
+                echo -n -e "\nWorking..."
+                verbose_echo "Pinging to A-SMS"
+                if check_ping; then
+                    echo -e "\nA-SMS is reachable, please check if this script is running on A-SMS"
+                    exit 1
+                fi
+
+                verbose_echo "Changing HA state to Active"
+                mgmt_cli -f json -r true set ha-state new-state active > "$TMP_OTPT" 2> "$TMP_ERR"
+                if [[ $? -eq 0 ]]; then
+                    verbose_echo "HA state changed to Active"
+                    mgmt_cli -f json -r true show service-group name "LDAP Services" > $TMP_OTPT 2> $TMP_ERR
+                    if [[ $? -ne 0 ]]; then
+                       echo -e "\nCould not find LDAP Services group"
+                       exit 1
+                    fi
+                    verbose_echo "Changing LDAP group color and comments"
+                     LDAP_GRP_COLOR=$(jq -r '.color' $TMP_OTPT)
+                     LDAP_GRP_COMMENT=$(jq -r '.comments' $TMP_OTPT)
+                     if [[ "$LDAP_GRP_COLOR" == "$NEW_LDAP_COLOR" ]]; then
+                        NEW_LDAP_COLOR="black"
+                    fi
+
+                    if [[ "$LDAP_GRP_COMMENT" == "$NEW_LDAP_COMMENT" ]]; then
+                        NEW_LDAP_COMMENT+=" (Modified)"
+                    fi
+
+                    mgmt_cli -f json -r true set service-group name "LDAP Services" color $NEW_LDAP_COLOR comments "$NEW_LDAP_COMMENT" > $TMP_OTPT 2> $TMP_ERR
+                    if [ $? -eq 0 ]; then
+                        verbose_echo "Following changes made to LDAP Services group object - color -> $NEW_LDAP_COLOR, comments -> $NEW_LDAP_COMMENT"
+                    else
+                        echo -e "\nError changing LDAP Services object"
+                        jq -r '.message' $TMP_OTPT 2> /dev/null
+                        cat $TMP_ERR
+                        exit 1
+                    fi
+                  
+                    echo -e "\nSetup completed. Please return to A-SMS and exit the script there"
+                    echo ""
+                    echo  ""
+                    echo "Note : this script will end automatically as soon as the script on A-SMS ends."
+                    echo "In case this does not end automatically, run the stop script on A-SMS or press Ctrl-C"
+                    i=0
+                    while ! check_ping; do
+                        i+=1
+                        if [ i=30 ]; then
+                            i=1
+                            echo -n "."
+                        fi
+                        sleep 3
+                    done
+                 else
+                    echo -e "\nUnable to change HA state to Active"
+                    if [[ "$(jq -r '.message' /tmp/lab2b.json)" == "null" ]]; then
+                        jq -r '.tasks[] | select(.status == "failed") | .comments' /tmp/lab2b.json
+                    fi                    
+                    cat $TMP_ERR
+                    exit 1
+                fi
+                ;;
+    *)  
+            echo "Aborting script"
+            exit 1
+            ;;
+    esac
+   echo -e "\nSetup completed"
+else
+    echo -e "\nThis script only runs on A-SMS and A-SMS-02"
+    exit 1
+fi

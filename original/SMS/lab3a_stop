@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+# Script Name: lab3a_stop
+# Description: Run command - labstop lab3a
+# Version: 2.1.2
+
+LAUNCH_MODE=background
+#VERBOSE=false
+
+if [[ -z "$1" ]]; then
+    echo "Usage: $0 <PID>"
+    exit 1
+fi
+
+PROCESS_ID=$1
+shift
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+verbose_echo "Killing process id $PROCESS_ID"
+ kill -9 "$PROCESS_ID" 2>/dev/null
+ 
+ echo -e "\nSetup completed"
+ exit 0

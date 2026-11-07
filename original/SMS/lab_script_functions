@@ -1,0 +1,33 @@
+#
+# Script Name: lab_script_functions
+# Description: common functions in lab scripts
+# Version: 2.1.2
+
+source /etc/profile.d/CP.sh
+
+DEFAULT_VERBOSE=false
+
+verbose_echo() {
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "\r$@"
+    else
+        echo -n ".."
+    fi
+}
+
+for arg in "$@"; do
+    if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
+        VERBOSE=true
+    elif [[ "$arg" == "-s" || "$arg" == "--silent" ]]; then
+        VERBOSE=false
+    fi
+done
+
+if [[ "$VERBOSE" != true && "$VERBOSE" != false ]]; then
+    VERBOSE="$DEFAULT_VERBOSE"
+fi
+
+if [ "$VERBOSE" == false ]; then
+    echo -ne "\rWorking .."
+fi
+

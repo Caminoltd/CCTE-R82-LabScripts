@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Script Name: labstart
+# Description: Run command - labstart <lab no.> <parameters>
+# Version: 2.1.2
+
+#VERBOSE=false
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+source "$SCRIPT_DIR/lab_script_functions"
+
+case "$1" in
+    -v|--verbose)
+    VERBOSE=true
+    shift        
+    ;;
+    -s|--silent)
+    VERBOSE=false
+    shift
+    ;;
+esac
+
+if [[ "$VERBOSE" == false ]]; then
+    echo -ne "\rWorking .."
+fi
+
+labno="$1"
+if [[ -z "$labno" ]]; then
+    echo -e "\nError: You must provide a lab name."
+    echo "Usage: $0 <lab name>"
+    exit 1
+fi
+
+SCRIPT_NAME="${labno}_start"
+SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+ 
+verbose_echo "Checking script file existence"
+if [[ ! -f "$SCRIPT_PATH" || ! -x "$SCRIPT_PATH" ]]; then
+    echo -e "\nScript file $SCRIPT_PATH does not exist or is not an executable"
+    exit 1
+fi
+
+shift
+LAUNCH_MODE=$(sed -n 's/.*LAUNCH_MODE=[[:space:]]*\([a-zA-Z]*\).* */\1/p' "$SCRIPT_PATH" | head -1)
+
+if [[ "${LAUNCH_MODE,,}" != "background" ]]; then
+    verbose_echo "Launching script in foreground"
+    exec -a $SCRIPT_NAME "$SCRIPT_PATH" "$@" 
+else
+    verbose_echo "Checking if script is running"
+    if pgrep -x "$SCRIPT_NAME" > /dev/null; then
+        echo -e "\n$labno is already running."
+        read -p "Do you want to restart it? (y/n): " choice
+        case "$choice" in
+            y|Y )
+                verbose_echo "Stopping $labno ..."
+                pkill -9 -x "$SCRIPT_NAME"
+                sleep 2
+                verbose_echo "Restarting $labno ..."
+                ;;
+            * )
+                echo -e "\nExiting without restarting."
+                exit 1
+                ;;
+        esac
+    fi
+    verbose_echo "Launching script in background"
+   exec -a $SCRIPT_NAME "$SCRIPT_PATH" "$@" &
+   disown
+   sleep 2
+fi
+exit 0

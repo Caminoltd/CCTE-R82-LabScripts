@@ -1,0 +1,77 @@
+#
+# Script Name: lab_script_functions
+# Description: common functions in lab scripts
+# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+
+source /etc/profile.d/CP.sh
+
+DEFAULT_VERBOSE=false
+
+verbose_echo() {
+    if [[ "$VERBOSE" == true ]]; then
+        echo -e "\r$*"
+    else
+        echo -n ".."
+    fi
+}
+
+for arg in "$@"; do
+    if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
+        VERBOSE=true
+    elif [[ "$arg" == "-s" || "$arg" == "--silent" ]]; then
+        VERBOSE=false
+    fi
+done
+
+if [[ "$VERBOSE" != true && "$VERBOSE" != false ]]; then
+    VERBOSE="$DEFAULT_VERBOSE"
+fi
+# Pass the setting on to the lab script that labstart/labstop/labrevert launches,
+# so "-v" works before or after the lab name.
+export VERBOSE
+
+if [ "$VERBOSE" == false ]; then
+    echo -ne "\rWorking .."
+fi
+
+# Lab names look like lab2a, lab8a ...
+valid_lab_name() {
+    [[ "$1" =~ ^lab[0-9]+[a-z]$ ]]
+}
+
+# Stop if the API login did not return a session id.
+require_sid() {
+    if [[ -z "$SID" || "$SID" == "null" ]]; then
+        echo -e "\nERROR: Login to the management API returned no session"
+        cat "$TMP_OTPT" 2>/dev/null
+        exit 1
+    fi
+}
+
+# Ctrl-C / hang-up during an API session: discard and log out so no objects stay locked.
+lab_interrupted() {
+    trap - INT TERM HUP
+    echo -e "\nInterrupted - discarding changes and logging out"
+    if [[ -n "$SID" && "$SID" != "null" ]]; then
+        mgmt_cli discard --session-id "$SID" -f json > /dev/null 2>&1
+        mgmt_cli logout --session-id "$SID" -f json > /dev/null 2>&1
+    fi
+    exit 130
+}
+
+# Second run of a start script: say so plainly instead of exiting silently.
+lab_already_set_up() {
+    # $1 = lab name, $2 = what was found
+    echo -e "\nLab $1 is already set up ($2). Nothing was changed."
+    echo "You can continue with the lab. To start it again from the beginning, run:"
+    echo "    ./labrevert $1   and then   ./labstart $1"
+}
+
+# Show the API error message from the last call.
+show_api_error() {
+    local msg
+    msg=$(jq -r '.message // empty' "$TMP_OTPT" 2>/dev/null)
+    [[ -n "$msg" ]] && echo "$msg"
+    [[ -s "$TMP_ERR" ]] && cat "$TMP_ERR"
+    return 0
+}

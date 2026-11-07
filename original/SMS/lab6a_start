@@ -1,0 +1,104 @@
+#!/bin/bash
+#
+# Script Name: lab6a_start
+# Description: Run command - labstart lab6a
+# Version: 2.1.2
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+LAYER_NAME="Web Content Layer"  
+RULE_NAME="Unified Policy Test Rule"
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+
+TMP_OTPT="/tmp/lab6a.json"
+TMP_ERR="/tmp/lab6a.err"
+SID="" 
+
+
+discard_close_session() {
+    verbose_echo "Discarding all changes"
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR   
+    echo -e "\nSetup ended"
+    exit $1
+}
+
+# Creating session
+verbose_echo "Creating login session"
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+ 
+# Check if Content Awareness is enabled in the specified layer
+verbose_echo "Checking if Content Awareness is enabled in '$LAYER_NAME'..."
+mgmt_cli show-access-layer name "$LAYER_NAME" -f json --session-id "$SID" > $TMP_OTPT 2> $TMP_ERR
+if jq -e  '.["content-awareness"] == true' $TMP_OTPT > /dev/null; then
+    verbose_echo "Content Awareness is already enabled in $LAYER_NAME."
+else
+    verbose_echo "Content Awareness is NOT enabled in $LAYER_NAME. Enabling now..."
+    mgmt_cli set-access-layer name "$LAYER_NAME" content-awareness true --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+    if [ $? -eq 0 ]; then
+        verbose_echo "Content Awareness has been enabled in $LAYER_NAME."
+    else
+        echo -e "\nFailed to enable Content Awareness in $LAYER_NAME."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+fi
+
+# Add rule #1 as specified
+mgmt_cli show-access-rule name "$RULE_NAME" layer "$LAYER_NAME" --session-id "$SID" -f json > /dev/null 2>&1
+# Check if the rule already exists
+if [ $? -eq 0 ]; then
+    verbose_echo "Required rule already exists..Skipping"
+    discard_close_session 0
+else
+    verbose_echo "Adding rule #1 to $LAYER_NAME..."
+    mgmt_cli add-access-rule layer "$LAYER_NAME" position 1 name "$RULE_NAME" source "Any"  destination "Internet" service "Any" content "Archive File" action "Drop" track.type "Log" --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to add rule #1"
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo "ERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0

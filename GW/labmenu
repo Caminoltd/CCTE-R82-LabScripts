@@ -1,0 +1,235 @@
+#!/bin/bash
+#
+# Script Name: labmenu
+# Description: Menu for the CCTE R82 lab scripts. Runs exactly the lab guide commands
+#              (./labstart, ./labstop, ./labrevert <lab>) so students see the same thing.
+# Usage:       labmenu            (from Expert mode on A-SMS, A-SMS-02, A-GW-01 or A-GW-02)
+# Version:     2.2.1 (Camino - see CHANGES.md)
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$SCRIPT_DIR" || { echo "Cannot open $SCRIPT_DIR"; exit 1; }
+[[ -f /etc/profile.d/CP.sh ]] && source /etc/profile.d/CP.sh
+
+HOST=$(hostname)
+VERSION=$(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || echo "original")
+VERBOSE_FLAG=""
+
+declare -A TITLE=(
+    [lab2a]="Troubleshoot Security Management Server Processes"
+    [lab2b]="Troubleshoot Management High Availability"
+    [lab3a]="Troubleshoot SmartLog"
+    [lab4a]="Debug User Mode Processes"
+    [lab5a]="Debug the Security Gateway Kernel"
+    [lab6a]="Debug Unified Policy Inspection"
+    [lab8a]="Debug Identity Awareness"
+    [lab9a]="Troubleshoot Site-to-Site VPN"
+)
+declare -A NOTE=(
+    [lab2b]="Start: A-SMS first, then A-SMS-02. Stop: A-SMS-02 first, then A-SMS."
+    [lab4a]="Runs on the gateways (A-GW-01 / A-GW-02)."
+)
+
+B=$(tput bold 2>/dev/null); N=$(tput sgr0 2>/dev/null)
+G=$(tput setaf 2 2>/dev/null); Y=$(tput setaf 3 2>/dev/null); C=$(tput setaf 6 2>/dev/null)
+
+labs_here() {
+    local f
+    for f in "$SCRIPT_DIR"/lab[0-9]*_start; do
+        [[ -x "$f" ]] && basename "$f" _start
+    done | sort -V
+}
+
+is_background() { grep -q 'LAUNCH_MODE=background' "$SCRIPT_DIR/${1}_start" 2>/dev/null; }
+
+bg_state() {
+    if pgrep -x "${1}_start" > /dev/null; then echo "${G}running${N}"; else echo "not running"; fi
+}
+
+pause() { echo; read -rp "Press Enter to return to the menu " _; }
+
+header() {
+    clear
+    echo "${B}CCTE R82 Lab Scripts${N}   host: ${C}${HOST}${N}   scripts: ${VERSION}"
+    echo "Verbose: $([[ -n "$VERBOSE_FLAG" ]] && echo "${Y}ON${N}" || echo "off")    folder: $SCRIPT_DIR"
+    echo "-----------------------------------------------------------------------------"
+}
+
+# Read-only check of where a lab stands
+lab_status() {
+    local lab=$1 out
+    case "$lab" in
+        lab2a|lab3a|lab4a)
+            echo "$lab is $(bg_state "$lab") (it runs in the background until labstop)";;
+        lab2b)
+            out=$(mgmt_cli -r true show ha-state -f json 2>/dev/null | jq -r '.domains[].servers[] | "\(.name)=\(."ha-state")"' 2>/dev/null | tr '\n' ' ')
+            echo "Management HA: ${out:-unknown}"
+            if clish -c "show route static" 2>/dev/null | grep -q '10.1.1.111/32.*is a reject route'; then
+                echo "A reject route to A-SMS-02 is in place (lab 2b start is waiting for 'exit' on A-SMS)."
+            fi;;
+        lab6a)
+            if mgmt_cli -r true show access-rule name "Unified Policy Test Rule" layer "Web Content Layer" -f json > /dev/null 2>&1
+            then echo "Lab 6a is set up (Unified Policy Test Rule exists)."; else echo "Lab 6a is not set up."; fi;;
+        lab8a)
+            if mgmt_cli -r true show access-rule name "Media Access rule" layer "Web Content Layer" -f json > /dev/null 2>&1
+            then echo "Lab 8a is set up (Media Access rule exists)."; else echo "Lab 8a is not set up."; fi;;
+        lab9a)
+            if mgmt_cli -r true show vpn-community-star name Bravo2AlphaVPN -f json > /dev/null 2>&1
+            then echo "Lab 9a is set up (Bravo2AlphaVPN community exists)."; else echo "Lab 9a is not set up."; fi;;
+        lab5a)
+            out=$(mgmt_cli -r true show access-rulebase name "DMZ Traffic layer" limit 3 -f json 2>/dev/null | jq -r '[.rulebase[] | (.rulebase[]? // .) | .name] | .[0]' 2>/dev/null)
+            if [[ "$out" == "DMZ Internal Access rule" ]]; then echo "Lab 5a looks set up (DMZ Internal Access rule is rule 1)."
+            else echo "Lab 5a does not look set up (first DMZ rule: ${out:-unknown})."; fi;;
+        *) echo "No status check for $lab.";;
+    esac
+}
+
+HAS_API=false
+command -v mgmt_cli > /dev/null 2>&1 && command -v jq > /dev/null 2>&1 && [[ -x "$MDS_FWDIR/scripts/cpm_status.sh" || -x "$FWDIR/scripts/cpm_status.sh" ]] && HAS_API=true
+# Policy installs run in the background (--sync false). Starting another lab action
+# while one is still running makes the new install fail, so wait for them.
+installs_running() {
+    # Only installs started in the last 10 minutes: an abandoned task can stay "in progress" for hours
+    local since=$(( ($(date +%s) - 600) * 1000 ))
+    mgmt_cli -r true show tasks status in-progress details-level full -f json 2>/dev/null |
+        jq -r --arg since "$since" '[.tasks[]? | select((."task-name" | contains("Policy installation")) and (."start-time".posix // 0) > ($since|tonumber))] | length' 2>/dev/null
+}
+wait_for_installs() {
+    # $1 = message prefix
+    [[ "$HAS_API" == true ]] || return 0
+    local n i=0
+    n=$(installs_running); [[ "${n:-0}" -gt 0 ]] || return 0
+    echo -n "$1: waiting for $n policy installation(s) to finish "
+    while [[ "${n:-0}" -gt 0 && $i -lt 60 ]]; do
+        echo -n "."; sleep 5; ((i++)); n=$(installs_running)
+    done
+    [[ "${n:-0}" -gt 0 ]] && echo " still running after 5 minutes - check SmartConsole" || echo " done"
+}
+install_tasks() {
+    # Policy installation tasks started since $1 (epoch seconds), one JSON object per line
+    local iso; iso=$(date -u -d "@$1" +%Y-%m-%dT%H:%M:%S)
+    mgmt_cli -r true show tasks from-date "$iso" details-level full -f json 2>/dev/null |
+        jq -c --arg since "$(( $1 * 1000 ))" '.tasks[]? | select((."task-name" | contains("Policy installation")) and (."start-time".posix // 0) >= ($since|tonumber))' 2>/dev/null
+}
+install_count() { install_tasks "$1" | grep -c . ; }
+install_results() {
+    # $1 = epoch seconds the action started. One line per policy installation.
+    [[ "$HAS_API" == true ]] || return 0
+    install_tasks "$1" | jq -r '
+        "  \(.status)  -  \(."task-name")" +
+        ([."task-details"[]? | select(.statusDescription != "Succeeded") |
+          "\n      \(.gatewayName): \([.stagesInfo[]?.messages[]?.message] | unique | join(" ") | .[0:220])"] | unique | join(""))' 2>/dev/null
+}
+
+run_cmd() {
+    # $1 = labstart|labstop|labrevert  $2 = lab
+    local cmd="./$1 $2${VERBOSE_FLAG:+ $VERBOSE_FLAG}" t0
+    echo
+    wait_for_installs "Before running"
+    t0=$(date +%s)
+    echo "${B}Running:${N} $cmd      (the same command as in the lab guide)"
+    echo
+    ./"$1" "$2" $VERBOSE_FLAG
+    local rc=$?
+    echo
+    if [[ $rc -eq 0 ]]; then echo "${G}Finished (exit code 0).${N}"
+    elif [[ $rc -eq 130 ]]; then echo "${Y}Interrupted.${N}"
+    else echo "${Y}Finished with exit code $rc - read the messages above.${N}"; fi
+    if is_background "$2" && [[ "$1" == "labstart" ]]; then
+        sleep 1; echo "$2 is now $(bg_state "$2") in the background."
+    elif [[ "$HAS_API" == true && ( $rc -eq 0 || $rc -eq 2 ) ]] && grep -q 'install-policy' "./${2}_${1#lab}" 2>/dev/null; then
+        echo
+        # The script starts the installs about 20-30 s after it publishes: wait for them to appear, then to finish
+        echo -n "Waiting for the policy installations to start "
+        local k=0
+        while [[ $(install_count "$t0") -lt 2 && $k -lt 24 ]]; do echo -n "."; sleep 5; ((k++)); done
+        echo
+        wait_for_installs "Policy installation"
+        echo "Policy installation results (as in SmartConsole > Recent Tasks):"
+        install_results "$t0"
+        [[ "$2" == "lab8a" && "$1" == "labstart" ]] && echo "  (Lab 8A: the Bravo-Standard failure on B-GW is the problem you troubleshoot in this lab.)"
+    fi
+    pause
+}
+
+show_last_output() {
+    local lab=$1 f
+    for f in /tmp/"$lab".json /tmp/"$lab".err /tmp/"$lab"-2.json /tmp/"$lab"-2.err; do
+        [[ -s "$f" ]] || continue
+        echo "${B}--- $f${N} ($(date -r "$f" '+%H:%M:%S'))"
+        tail -n 25 "$f"
+    done
+    pause
+}
+
+lab_screen() {
+    local lab=$1 c has_revert
+    [[ -x "$SCRIPT_DIR/${lab}_revert" ]] && has_revert=yes
+    while true; do
+        header
+        echo "${B}${lab^^}${N}  ${TITLE[$lab]}"
+        [[ -n "${NOTE[$lab]}" ]] && echo "${Y}${NOTE[$lab]}${N}"
+        is_background "$lab" && echo "Status: $(bg_state "$lab")"
+        echo
+        echo "  1) Start    ./labstart $lab"
+        echo "  2) Stop     ./labstop $lab"
+        if [[ -n "$has_revert" ]]; then
+            echo "  3) Revert   ./labrevert $lab   (puts the lab back to its start; then Start again)"
+        else
+            echo "  3) Revert   ./labrevert $lab   (no revert script: runs the stop script)"
+        fi
+        echo "  4) Status   read-only check of where this lab stands"
+        echo "  5) Show the last API output files (/tmp/$lab.*)"
+        echo "  v) Verbose on/off      b) Back"
+        echo
+        read -rp "Choice: " c
+        case "$c" in
+            1) run_cmd labstart "$lab";;
+            2) run_cmd labstop "$lab";;
+            3) read -rp "Revert $lab? Work done in this lab will be undone (y/n): " a
+               [[ "$a" =~ ^[Yy] ]] && run_cmd labrevert "$lab";;
+            4) echo; lab_status "$lab"; pause;;
+            5) echo; show_last_output "$lab";;
+            v|V) [[ -n "$VERBOSE_FLAG" ]] && VERBOSE_FLAG="" || VERBOSE_FLAG="-v";;
+            b|B|"") return;;
+        esac
+    done
+}
+
+main_menu() {
+    local labs c i
+    mapfile -t labs < <(labs_here)
+    if [[ ${#labs[@]} -eq 0 ]]; then echo "No lab scripts found in $SCRIPT_DIR"; exit 1; fi
+    while true; do
+        header
+        echo "Labs on this host:"
+        for i in "${!labs[@]}"; do
+            printf "  %2d) %-6s %s" $((i + 1)) "${labs[$i]^^}" "${TITLE[${labs[$i]}]}"
+            is_background "${labs[$i]}" && printf "  [%s]" "$(bg_state "${labs[$i]}")"
+            echo
+        done
+        echo
+        echo "  v) Verbose on/off   h) Help   q) Quit"
+        echo
+        read -rp "Choose a lab: " c
+        case "$c" in
+            q|Q) clear; exit 0;;
+            v|V) [[ -n "$VERBOSE_FLAG" ]] && VERBOSE_FLAG="" || VERBOSE_FLAG="-v";;
+            h|H) header
+                 echo "This menu runs the same commands as the lab guide:"
+                 echo "  Start  = ./labstart <lab>    sets up the lab problem"
+                 echo "  Stop   = ./labstop <lab>     ends the lab (and fixes the problem)"
+                 echo "  Revert = ./labrevert <lab>   back to the start of the lab (then Start again)"
+                 echo "You can still type those commands yourself in $SCRIPT_DIR."
+                 echo
+                 echo "Results you will see:"
+                 echo "  'Setup completed'          the script did its job"
+                 echo "  'ERROR: ...'               something failed - nothing was changed"
+                 echo "  'already set up'           an earlier run already did it - carry on with the lab"
+                 echo "Verbose mode (-v) prints every step."
+                 pause;;
+            *) if [[ "$c" =~ ^[0-9]+$ ]] && (( c >= 1 && c <= ${#labs[@]} )); then lab_screen "${labs[$((c - 1))]}"; fi;;
+        esac
+    done
+}
+
+main_menu

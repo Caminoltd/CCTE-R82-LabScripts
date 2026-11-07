@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# Script Name: lab8a_stop
+# Description: Run command - labstop lab8a
+# Version: 2.1.1
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+LAYER_NAME="Web Content layer"  
+RULE_NAME="Media Access rule"
+MARKETING_RULE="Marketing Access rule"
+ACCESS_ROLE="Media Team"
+EXTERNAL_VIP="203.0.113.1"
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+
+TMP_OTPT="/tmp/lab8a-2.json"
+TMP_ERR="/tmp/lab8a-2.err"
+SID="" 
+
+
+discard_close_session() {
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR   
+    echo -e "\nSetup ended"
+    exit $1
+}
+
+# Creating session
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+
+
+# Set cluster properties
+verbose_echo "Setting cluster properties"
+mgmt_cli set simple-cluster name "A-GW-CLUSTER" ip-address "$EXTERNAL_VIP" identity-awareness-settings.identity-sharing-settings.share-with-other-gateways true vpn-settings.link-selection.ip-selection "use-main-address" --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nCould not modify A-GW-CLUSTER settings, kindly edit manually"
+fi
+
+# Set identity awareness on B-GW
+verbose_echo "Setting identity awareness on B-GW"
+mgmt_cli set simple-gateway name "B-GW" identity-awareness true identity-awareness-settings.identity-sharing-settings.receive-from-other-gateways true identity-awareness-settings.identity-sharing-settings.receive-from "A-GW-CLUSTER" --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then   
+    echo -e "\nCould not configure Identity Awareness options in B-GW, kindly configure manually"
+fi
+
+verbose_echo "Setting Policy-Targets in $MARKETING_RULE"
+mgmt_cli set access-rule name "$MARKETING_RULE" layer "$LAYER_NAME" install-on "Policy Targets"  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nCould not modify '$MARKETING_RULE' policy settings, kindly configure manually"
+fi
+
+verbose_echo "Setting action and track in $RULE_NAME"
+mgmt_cli set access-rule name "$RULE_NAME" layer "$LAYER_NAME" action "Accept" track.type "Extended Log" track.accounting true track.per-connection true track.per-session true track.enable-firewall-session true --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nCould not modify '$RULE_NAME' policy settings, kindly configure manually"
+fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy."
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0

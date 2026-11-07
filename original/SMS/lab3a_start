@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+# Script Name: lab3a_start
+# Description: Run command - labstart lab3a
+# Version: 2.1.2
+
+LAUNCH_MODE=background
+#VERBOSE=false
+
+PROC_NAME="smartlog_server"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+kill_proc() {
+    if pgrep $PROC_NAME >/dev/null 2>&1; then
+        pkill -9 -x $PROC_NAME 2>/dev/null
+    fi
+}
+
+verbose_echo "Killing $PROC_NAME every 15 seconds"
+echo -e "\nSetup completed\n"
+while true; do
+    kill_proc
+    sleep 15
+done

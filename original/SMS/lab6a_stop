@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# Script Name: lab6a_stop
+# Description: Run command - labstop lab6a
+# Version: 2.1.2
+
+#VERBOSE=false
+
+source /etc/profile.d/CP.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lab_script_functions"
+
+# Variables
+LAYER_NAME="Web Content Layer"
+RULE_NAME="Unified Policy Test Rule"
+POLICIES=("Alpha-Standard" "Bravo-Standard")
+TARGETS=("A-GW-CLUSTER" "B-GW")
+GATEWAYS=("A-GW-01" "A-GW-02")
+
+TMP_OTPT="/tmp/lab6a.json"
+TMP_ERR="/tmp/lab6a.err"
+SID="" 
+
+reset_kernel_parameters() {
+    for GATEWAY in "${GATEWAYS[@]}"; do
+    verbose_echo "Restoring Kernel Parameter on $GATEWAY"
+    mgmt_cli run-script script-name "kernel parameters" script-type "one time" script "fw ctl set int up_log_extended_reason_for_incomplete_match 0" targets "$GATEWAY" --session-id "$SID" --sync false -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to restore Kernel Parameter on $GATEWAY"
+        cat $TMP_ERR
+        exit 1
+    fi
+        done
+}
+
+discard_close_session() {
+    verbose_echo "Discarding changes"
+    mgmt_cli discard --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+    echo -e "\nRestore ended"
+    exit $1
+}
+
+# Creating session
+verbose_echo "Creating login session"
+mgmt_cli login -r true -f json > $TMP_OTPT 2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Failed to login"
+    cat $TMP_OTPT
+    cat $TMP_ERR
+    exit 1
+fi
+ 
+SID=$(jq -r '.sid' $TMP_OTPT)
+ 
+verbose_echo "Restoring changes..."
+
+# Remove the rule if it exists
+verbose_echo "Checking if rule '$RULE_NAME' exists in '$LAYER_NAME'..."
+
+RULE_UID=$(mgmt_cli show-access-rule name "$RULE_NAME" layer "$LAYER_NAME" --session-id "$SID" -f json 2> $TMP_ERR | jq -r '.uid // empty')
+if [ -n "$RULE_UID" ]; then
+    verbose_echo "Deleting rule '$RULE_NAME'..."
+    mgmt_cli delete-access-rule uid "$RULE_UID" layer "$LAYER_NAME"  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to delete rule '$RULE_NAME'"
+        discard_close_session 0
+    fi
+else
+    verbose_echo "Rule does not exist. Skipping rule deletion."
+    reset_kernel_parameters
+    echo -e "\nKindly check policy installation status in SmartConsole"
+    discard_close_session 0
+fi
+
+# Publish changes
+verbose_echo "Publishing changes"
+mgmt_cli publish --session-id "$SID" -f json > $TMP_OTPT  2> $TMP_ERR
+if [ $? -ne 0 ]; then
+    echo -e "\nERROR: Could not publish changes"
+    cat $TMP_ERR
+    discard_close_session 1
+fi
+
+# Install policies
+for i in "${!POLICIES[@]}"; do
+    POLICY="${POLICIES[$i]}"
+    TARGET="${TARGETS[$i]}"
+    
+    verbose_echo "Installing policy: $POLICY on target: $TARGET"
+    mgmt_cli install-policy policy-package "$POLICY" targets $TARGET --sync false  --session-id "$SID" -f json > $TMP_OTPT 2> $TMP_ERR
+    if [ $? -ne 0 ]; then
+        echo -e "\nERROR: Failed to install policy $POLICY"
+        cat $TMP_ERR
+        discard_close_session 1
+    fi
+done
+
+# Resetting kernel parameter
+reset_kernel_parameters
+mgmt_cli logout --session-id "$SID" -f json >> $TMP_OTPT 2>> $TMP_ERR
+
+echo -e "\nSetup completed. Kindly check policy installation status in SmartConsole"
+exit 0
