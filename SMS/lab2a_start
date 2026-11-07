@@ -2,7 +2,7 @@
 #
 # Script Name: lab2a_start
 # Description: Run command - labstart lab2a
-# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+# Version: 2.2.0 (see CHANGES.md)
 
 LAUNCH_MODE=background
 #VERBOSE=false

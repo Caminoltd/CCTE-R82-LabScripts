@@ -2,7 +2,7 @@
 #
 # Script Name: labstop / labrevert
 # Description: Run command - labstop / labrevert <lab no.>
-# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+# Version: 2.2.0 (see CHANGES.md)
 
 #VERBOSE=false
 

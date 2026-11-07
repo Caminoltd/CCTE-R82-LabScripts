@@ -2,7 +2,7 @@
 #
 # Script Name: lab3a_stop
 # Description: Run command - labstop lab3a
-# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+# Version: 2.2.0 (see CHANGES.md)
 
 LAUNCH_MODE=background
 #VERBOSE=false

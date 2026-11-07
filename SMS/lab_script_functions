@@ -1,7 +1,7 @@
 #
 # Script Name: lab_script_functions
 # Description: common functions in lab scripts
-# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+# Version: 2.2.0 (see CHANGES.md)
 
 source /etc/profile.d/CP.sh
 

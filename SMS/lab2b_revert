@@ -2,7 +2,7 @@
 #
 # Script Name: lab2b_revert
 # Description: Run command - labrevert lab2b
-# Version: 2.2.0 (Camino fixes - see CHANGES.md)
+# Version: 2.2.0 (see CHANGES.md)
 
 #VERBOSE=false
 

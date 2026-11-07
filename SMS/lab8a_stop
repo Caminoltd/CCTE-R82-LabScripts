@@ -2,7 +2,7 @@
 #
 # Script Name: lab8a_stop
 # Description: Run command - labstop lab8a
-# Version: 2.2.1 (Camino fixes - see CHANGES.md)
+# Version: 2.2.1 (see CHANGES.md)
 
 #VERBOSE=false
 

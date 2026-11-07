@@ -5,9 +5,9 @@
 | `labmenu` | Before running an action, waits for any policy installation started in the last 10 minutes to finish. Running Revert and then Start straight away made the two sets of installs collide, and the new ones failed. After Start, Stop or Revert, waits for the installations the script started and shows each result, including the reason for a failure (for example the intended B-GW failure in Lab 8A). Uses only jq 1.4 features (the version on Gaia R82) |
 | `lab8a_stop` | Counts settings it could not apply. If any, it prints a WARNING after "Setup completed" (for example when the Media Access rule is missing because the lab was reverted) and exits with code 2 |
 
-# Changes in 2.2.0 (Camino, 7 Nov 2026)
+# Changes in 2.2.0 (7 Nov 2026)
 
-Base: the Check Point scripts in the Skillable lab image (dated 6 Mar 2026, version 2.1.1/2.1.2).
+Base: the Check Point scripts in the CCTE R82 lab image (dated 6 Mar 2026, version 2.1.1/2.1.2).
 Every lab guide command and every normal message is unchanged. `diff -r original/ SMS/` shows each change.
 
 ## All hosts
@@ -44,7 +44,7 @@ Every lab guide command and every normal message is unchanged. `diff -r original
 faults each lab creates; `/tmp/labX.json` file names; message typos; the `TikTok` application name
 (already correct in the lab image; the ATC portal zip has `TikTokd` on line 74 of `lab8a_start`).
 
-## Tested on 7 Nov 2026 (Skillable CCTE R82 lab)
+## Tested on 7 Nov 2026 (CCTE R82 lab)
 
 Install and `-Restore` on all four hosts. labstart/labstop for 2a, 3a, 4a, 5a, 6a, 8a and 9a, each run
 twice. labrevert for 3a (stop-script path) and 8a. Interrupting 5a: session discarded, no locks. Menu
