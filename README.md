@@ -72,4 +72,4 @@ See [CHANGES.md](CHANGES.md) and the handout in `docs/`. In short:
 | `build.sh` | Rebuilds `dist/` after a script change |
 | `docs/` | Handout for instructors and students |
 
-Tested on a Skillable CCTE R82 lab on 7 November 2026. Not affiliated with or endorsed by Check Point.
+Tested and see to be working on a one CCTE R82 lab on 7 November 2026. 
