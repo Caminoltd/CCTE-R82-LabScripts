@@ -49,6 +49,32 @@ command as the lab guide (for example `./labstart lab8a`). `v` turns verbose mod
 After an action it waits for the policy installations and shows each result, and it will not start
 a new action while an installation is still running.
 
+## Optional: the lab menu on A-GUI (PowerShell)
+
+A separate menu that runs on A-GUI and drives the appliances for you over SSH. It installs
+nothing on the appliances, works with the original Check Point scripts and with this set,
+and does not change anything above.
+
+```powershell
+irm https://raw.githubusercontent.com/Caminoltd/CCTE-R82-LabScripts/main/agui/Install-CCTELabMenu.ps1 | iex
+```
+
+This adds a **CCTE Lab Menu** shortcut to the desktop (files in `C:\CCTE-LabMenu`). Pick a lab, then
+Start, Stop, Revert or Status. It runs each lab guide command on the right appliance:
+
+- **Lab 2B** is run from this one window, in the book's order. Start runs A-SMS (2B-1.2a), then
+  A-SMS-02 (2B-1.2b), answers *y* (2B-1.2c) and types *exit* on A-SMS (2B-1.3). Stop follows
+  Task 2B-3 (A-SMS, then A-SMS-02) and waits for the two servers to agree on their HA state.
+- **Lab 4A** runs on whichever gateway is the Active cluster member.
+- **Labs 5A, 6A, 8A, 9A** wait for any running policy installation first, then show the result of
+  each installation, as in SmartConsole Recent Tasks.
+
+It asks for the lab admin password once per window and keeps it in memory only. To remove it:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Caminoltd/CCTE-R82-LabScripts/main/agui/Install-CCTELabMenu.ps1))) -Uninstall
+```
+
 ## What changed
 
 See [CHANGES.md](CHANGES.md) and the handout in `docs/`. In short:
@@ -71,5 +97,6 @@ See [CHANGES.md](CHANGES.md) and the handout in `docs/`. In short:
 | `Install-CCTEScripts.ps1` | Installer for A-GUI |
 | `build.sh` | Rebuilds `dist/` after a script change |
 | `docs/` | Handout for instructors and students |
+| `agui/` | Optional lab menu for A-GUI (`CCTE-LabMenu.ps1`) and its installer |
 
 Tested and seen to be working on a CCTE R82 lab on 7 November 2026.

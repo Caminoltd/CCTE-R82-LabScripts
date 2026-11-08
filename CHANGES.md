@@ -1,3 +1,13 @@
+# A-GUI lab menu 1.0.0 (8 Nov 2026)
+
+New, optional, in `agui/`; nothing else changes. `CCTE-LabMenu.ps1` runs on A-GUI and drives the
+lab scripts on the appliances over plink in Expert mode (original or improved scripts).
+`Install-CCTEScripts.ps1` and the appliance scripts are untouched.
+
+Tested on 8 Nov 2026 (CCTE R82 lab): lab 2B Start (both servers, about 1 minute) and Stop (including
+straight after Start, when A-SMS needs about 2.5 minutes to see A-SMS-02 as Standby); lab 8A Start
+and Revert with installation results; status checks.
+
 # Changes in 2.2.2 (8 Nov 2026)
 
 | File | Change |
