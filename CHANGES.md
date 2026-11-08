@@ -1,3 +1,9 @@
+# A-GUI lab menu 1.0.2 (8 Nov 2026)
+
+Shows "Connecting to <host> ... ok" for every SSH login (each takes about 12 seconds), says when an
+action is working, ignores keys pressed while waiting (they used to skip the "Press Enter" pause),
+and remembers each host's login shell so later connections in the same window are quicker.
+
 # A-GUI lab menu 1.0.1 (8 Nov 2026)
 
 Status added for Lab 4A (both gateways: cluster state and whether the lab script runs) and Lab 5A.

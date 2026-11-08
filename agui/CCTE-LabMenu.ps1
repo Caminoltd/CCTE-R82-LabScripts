@@ -20,7 +20,7 @@ param(
     [string]$User = "admin"
 )
 
-$Version = "1.0.1"
+$Version = "1.0.2"
 $Hosts = [ordered]@{ "A-SMS" = "10.1.1.101"; "A-SMS-02" = "10.1.1.111"; "A-GW-01" = "10.1.1.2"; "A-GW-02" = "10.1.1.3" }
 $ApiLabs = @("lab5a", "lab6a", "lab8a", "lab9a")
 $Labs = [ordered]@{
@@ -58,11 +58,17 @@ function Get-LabPassword {
 
 # ---------------------------------------------------------------- Gaia session
 # A live plink session in Expert mode. Output is read raw (prompts have no newline).
+$script:ShellIsClish = @{}
 function Open-Gaia([string]$Name) {
     $ip = $Hosts[$Name]; $pw = Get-LabPassword
-    $probe = cmd /c "echo y| `"$script:plink`" -ssh -l $User -pw `"$pw`" $ip `"echo SHELL_IS_`$((40+2))`" 2>&1" | Out-String
-    if ($probe -match "Access denied") { throw "Login to $Name ($ip) failed - check the password" }
-    $clish = $probe -notmatch "SHELL_IS_42"
+    Write-Host ("Connecting to {0} ({1}) ... " -f $Name, $ip) -ForegroundColor DarkGray -NoNewline
+    if (-not $script:ShellIsClish.ContainsKey($Name)) {
+        # First contact: accept the host key and find out whether admin logs in to clish or bash
+        $probe = cmd /c "echo y| `"$script:plink`" -ssh -l $User -pw `"$pw`" $ip `"echo SHELL_IS_`$((40+2))`" 2>&1" | Out-String
+        if ($probe -match "Access denied") { Write-Host "failed" -ForegroundColor Red; throw "Login to $Name ($ip) failed - check the password" }
+        $script:ShellIsClish[$Name] = $probe -notmatch "SHELL_IS_42"
+    }
+    $clish = $script:ShellIsClish[$Name]
     $psi = New-Object Diagnostics.ProcessStartInfo $script:plink
     $psi.Arguments = "-ssh -batch -t -l $User -pw `"$pw`" $ip"
     $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
@@ -74,7 +80,7 @@ function Open-Gaia([string]$Name) {
         Send-Gaia $s $pw;      [void](Wait-Gaia $s "#\s*$|expert mode" 20 -Quiet)
     }
     Send-Gaia $s "stty -echo 2>/dev/null; unset PROMPT_COMMAND; export PS1='CCTE_READY> '; cd /home/admin/CCTE_Scripts"
-    [void](Wait-Gaia $s "CCTE_READY> " 20 -Quiet)
+    if (Wait-Gaia $s "CCTE_READY> " 20 -Quiet) { Write-Host "ok" -ForegroundColor DarkGray } else { Write-Host "no Expert prompt (check the password)" -ForegroundColor Red }
     $s.Mark = $s.Buf.Length; $s.Shown = $s.Buf.Length
     return $s
 }
@@ -331,7 +337,8 @@ function Invoke-Action([string]$lab, [string]$action) {
 $script:VerboseOn = [bool]$VerboseLab
 if ($Lab -and $Action) { Invoke-Action $Lab.ToLower() $Action; return }
 
-function Pause-Menu { Write-Host ""; [void](Read-Host "Press Enter to return to the menu") }
+function Clear-Keys { try { while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) } } catch { } }
+function Pause-Menu { Write-Host ""; Clear-Keys; [void](Read-Host "Press Enter to return to the menu") }
 function Header {
     Clear-Host
     Say "CCTE R82 Lab Menu for A-GUI  (v$Version)" Cyan
@@ -343,7 +350,7 @@ while ($true) {
     $keys = @($Labs.Keys)
     for ($i = 0; $i -lt $keys.Count; $i++) { Write-Host ("  {0}) {1}  {2,-52} [{3}]" -f ($i + 1), $keys[$i].ToUpper(), $Labs[$keys[$i]].Title, $Labs[$keys[$i]].Host) }
     Write-Host ""; Write-Host "  v) Verbose on/off   q) Quit"; Write-Host ""
-    $c = Read-Host "Choose a lab"
+    Clear-Keys; $c = Read-Host "Choose a lab"
     if ($c -match "^[qQ]") { break }
     if ($c -match "^[vV]") { $script:VerboseOn = -not $script:VerboseOn; continue }
     if (-not ($c -match "^\d+$") -or [int]$c -lt 1 -or [int]$c -gt $keys.Count) { continue }
@@ -360,11 +367,12 @@ while ($true) {
         Write-Host "  4) Status   read-only check"
         Write-Host "  b) Back"
         Write-Host ""
-        $a = Read-Host "Choice"
+        Clear-Keys; $a = Read-Host "Choice"
         if ($a -match "^[bB]" -or $a -eq "") { break }
         $act = switch ($a) { "1" { "start" } "2" { "stop" } "3" { "revert" } "4" { "status" } default { $null } }
         if (-not $act) { continue }
         if ($act -eq "revert") { if ((Read-Host "Revert $lab? Work done in this lab will be undone (y/n)") -notmatch "^[yY]") { continue } }
+        if ($act -ne "status") { Say "Working - this can take a minute or more. Keys pressed now are ignored." DarkGray } else { Say "Checking (read-only) ..." DarkGray }
         Invoke-Action $lab $act
         Pause-Menu
     }
