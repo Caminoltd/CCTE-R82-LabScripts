@@ -1,3 +1,7 @@
+# A-GUI lab menu 1.0.1 (8 Nov 2026)
+
+Status added for Lab 4A (both gateways: cluster state and whether the lab script runs) and Lab 5A.
+
 # A-GUI lab menu 1.0.0 (8 Nov 2026)
 
 New, optional, in `agui/`; nothing else changes. `CCTE-LabMenu.ps1` runs on A-GUI and drives the

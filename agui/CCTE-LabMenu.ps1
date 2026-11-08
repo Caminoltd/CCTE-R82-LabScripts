@@ -20,7 +20,7 @@ param(
     [string]$User = "admin"
 )
 
-$Version = "1.0.0"
+$Version = "1.0.1"
 $Hosts = [ordered]@{ "A-SMS" = "10.1.1.101"; "A-SMS-02" = "10.1.1.111"; "A-GW-01" = "10.1.1.2"; "A-GW-02" = "10.1.1.3" }
 $ApiLabs = @("lab5a", "lab6a", "lab8a", "lab9a")
 $Labs = [ordered]@{
@@ -293,6 +293,18 @@ function Run-2B([string]$action) {
 
 # ---------------------------------------------------------------- status (read-only)
 function Show-Status([string]$lab) {
+    if ($lab -eq "lab4a") {
+        foreach ($g in "A-GW-01", "A-GW-02") {
+            $s = $null
+            try {
+                $s = Open-Gaia $g
+                $o = Invoke-Read $s "st=`$(cphaprob state 2>/dev/null | grep -i '(local)' | grep -oiE 'active attention|active|standby|down|ready' | head -1 | tr a-z A-Z); pgrep -x lab4a_start >/dev/null && r='Lab 4A is RUNNING (cpd is being stopped every 15 s)' || r='Lab 4A is not running'; echo `"`$st: `$r`""
+                Say ("{0,-8} {1}" -f $g, $o) $(if ($o -match "RUNNING") { "Yellow" } else { "White" })
+            } catch { Say "$g : $($_.Exception.Message)" Red } finally { Close-Gaia $s }
+        }
+        Say "The script should run on the Active member (book 4A-1.2)." DarkGray
+        return
+    }
     $s = $null
     try {
         $s = Open-Gaia "A-SMS"
@@ -300,13 +312,13 @@ function Show-Status([string]$lab) {
             "lab2a" { "pgrep -x lab2a_start >/dev/null && echo 'Lab 2A is running (CPM is being stopped every 15 s).' || echo 'Lab 2A is not running.'" }
             "lab3a" { "pgrep -x lab3a_start >/dev/null && echo 'Lab 3A is running.' || echo 'Lab 3A is not running.'" }
             "lab2b" { "source /etc/profile.d/CP.sh; mgmt_cli -r true show ha-state -f json 2>/dev/null | jq -r '.domains[].servers[] | `"\(.name): \(.`"ha-state`")`"'; clish -c 'show route static' 2>/dev/null | grep -q '10.1.1.111/32.*reject' && echo 'A-SMS has a reject route to A-SMS-02 (the lab 2B start script on A-SMS is waiting for exit).'" }
+            "lab5a" { "mgmt_cli -r true show access-rulebase name 'DMZ Traffic layer' limit 3 -f json 2>/dev/null | jq -r '[.rulebase[] | (.rulebase[]? // .) | .name] | .[0]' | grep -qx 'DMZ Internal Access rule' && echo 'Lab 5A looks set up (DMZ Internal Access rule is rule 1).' || echo 'Lab 5A does not look set up.'" }
             "lab6a" { "mgmt_cli -r true show access-rule name 'Unified Policy Test Rule' layer 'Web Content Layer' -f json >/dev/null 2>&1 && echo 'Lab 6A is set up.' || echo 'Lab 6A is not set up.'" }
             "lab8a" { "mgmt_cli -r true show access-rule name 'Media Access rule' layer 'Web Content Layer' -f json >/dev/null 2>&1 && echo 'Lab 8A is set up (Media Access rule exists).' || echo 'Lab 8A is not set up.'" }
             "lab9a" { "mgmt_cli -r true show vpn-community-star name Bravo2AlphaVPN -f json >/dev/null 2>&1 && echo 'Lab 9A is set up.' || echo 'Lab 9A is not set up.'" }
             default { "echo 'No status check for $lab.'" }
         }
         Say (Invoke-Read $s $cmd) White
-        if ($lab -eq "lab4a") { Say "Lab 4A runs on the gateways; use Status in labmenu on the gateway, or ps aux | grep lab." DarkGray }
     } catch { Say $_.Exception.Message Red } finally { Close-Gaia $s }
 }
 
