@@ -2,7 +2,7 @@
 #
 # Script Name: lab2b_start
 # Description: Run command - labstart lab2b
-# Version: 2.2.0 (see CHANGES.md)
+# Version: 2.2.2 (see CHANGES.md)
 
 #VERBOSE=false
 
@@ -94,6 +94,7 @@ if [[ "$HOSTNAME" == "A-SMS" ]]; then
         exit 1
     fi
     echo -e "\nKindly run the same script on A-SMS-02 now and then exit this script"
+    echo "Leave THIS window open. When A-SMS-02 shows 'Setup completed', come back here and type exit."
     sleep 5
     while true; do
         read -rp 'Type "exit" to restore connectivity and continue: ' input
@@ -153,6 +154,7 @@ elif [[ "$HOSTNAME" == "A-SMS-02" ]]; then
                     fi
                   
                     echo -e "\nSetup completed. Please return to A-SMS and exit the script there"
+                    echo "Type exit in the A-SMS window that is waiting for it (do not open a new session)."
                     echo ""
                     echo  ""
                     echo "Note : this script will end automatically as soon as the script on A-SMS ends."

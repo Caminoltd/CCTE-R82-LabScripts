@@ -4,7 +4,7 @@
 # Description: Menu for the CCTE R82 lab scripts. Runs exactly the lab guide commands
 #              (./labstart, ./labstop, ./labrevert <lab>) so students see the same thing.
 # Usage:       labmenu            (from Expert mode on A-SMS, A-SMS-02, A-GW-01 or A-GW-02)
-# Version:     2.2.1 (see CHANGES.md)
+# Version:     2.2.2 (see CHANGES.md)
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 cd "$SCRIPT_DIR" || { echo "Cannot open $SCRIPT_DIR"; exit 1; }

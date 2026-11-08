@@ -17,7 +17,7 @@ Enter the lab admin password when asked. It is used for this run only and not sa
 updates A-SMS, A-SMS-02, A-GW-01 and A-GW-02, and prints one line per host:
 
 ```
-A-SMS     10.1.1.101  OK version 2.2.1 installed, originals kept in /home/admin/CCTE_Scripts/.orig, type: labmenu
+A-SMS     10.1.1.101  OK version 2.2.2 installed, originals kept in /home/admin/CCTE_Scripts/.orig, type: labmenu
 ```
 
 It takes about 20 seconds per host. Requirements: PuTTY `plink.exe` on A-GUI (it is in the lab image) and
@@ -36,7 +36,7 @@ Add `-Only A-SMS,A-SMS-02` to change only some hosts.
 On A-SMS, A-SMS-02, A-GW-01 or A-GW-02: log in as admin, type `expert`, then `labmenu`.
 
 ```
-CCTE R82 Lab Scripts   host: A-SMS   scripts: 2.2.1
+CCTE R82 Lab Scripts   host: A-SMS   scripts: 2.2.2
 Labs on this host:
    1) LAB2A  Troubleshoot Security Management Server Processes  [not running]
    2) LAB2B  Troubleshoot Management High Availability

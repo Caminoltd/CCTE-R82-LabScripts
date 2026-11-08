@@ -1,3 +1,10 @@
+# Changes in 2.2.2 (8 Nov 2026)
+
+| File | Change |
+| --- | --- |
+| `lab2b_start`, `lab2b_revert` | One extra line after each existing prompt; the existing lines are unchanged. On A-SMS: "Leave THIS window open. When A-SMS-02 shows 'Setup completed', come back here and type exit." On A-SMS-02: "Type exit in the A-SMS window that is waiting for it (do not open a new session)." Lab guide step 2B-1.3 is easy to read as "close the SSH sessions"; if the waiting A-SMS script never gets `exit`, A-SMS stays cut off from A-SMS-02 and the conflict on page 160 never appears |
+| `docs/` handout | New section "Lab notes" with known differences between the lab guide and the R82 lab |
+
 # Changes in 2.2.1 (7 Nov 2026)
 
 | File | Change |
