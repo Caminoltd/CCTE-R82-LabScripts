@@ -1,3 +1,10 @@
+# Appliance scripts 2.2.5 (8 Nov 2026)
+
+| File | Change |
+| --- | --- |
+| `labmenu` | Lab 2B note now matches the lab guide: Stop (Task 2B-3) is A-SMS first, then A-SMS-02. It said the opposite |
+| `docs/` handout | Updated to 2.2.5; adds the A-GUI lab menu and more lab notes (lab 4A CPD restart, lab 6A kernel-parameter tasks, sk168055) |
+
 # Appliance scripts 2.2.4 and A-GUI lab menu 1.0.4 (8 Nov 2026)
 
 | File | Change |
