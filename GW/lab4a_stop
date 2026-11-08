@@ -2,7 +2,7 @@
 #
 # Script Name: lab4a_stop
 # Description: Run command - labstop lab4a
-# Version: 2.2.0 (see CHANGES.md)
+# Version: 2.2.4 (see CHANGES.md)
 
 LAUNCH_MODE=background
 #VERBOSE=false
@@ -23,4 +23,7 @@ verbose_echo "Killing process id $PROCESS_ID"
 kill -9 "$PROCESS_ID" 2>/dev/null
 
 echo -e "\nSetup completed"
+echo "Next (lab guide step 4A-4.2): start CPD again on this gateway with:"
+echo '    cpwd_admin start -name CPD -path "$CPDIR/bin/cpd" -command "cpd"'
+echo "then check it with: cpwd_admin list"
  exit 0

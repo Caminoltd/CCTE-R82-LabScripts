@@ -20,7 +20,7 @@ param(
     [string]$User = "admin"
 )
 
-$Version = "1.0.3"
+$Version = "1.0.4"
 $Hosts = [ordered]@{ "A-SMS" = "10.1.1.101"; "A-SMS-02" = "10.1.1.111"; "A-GW-01" = "10.1.1.2"; "A-GW-02" = "10.1.1.3" }
 $ApiLabs = @("lab5a", "lab6a", "lab8a", "lab9a")
 $Labs = [ordered]@{
@@ -186,9 +186,19 @@ function Get-ActiveGateway {
 
 function Run-Simple([string]$lab, [string]$action) {
     $hostName = "A-SMS"
-    if ($lab -eq "lab4a") {
+    if ($lab -eq "lab4a" -and $action -eq "start") {
         Say "Lab 4A runs on the Active cluster member (book 4A-1.1 / 4A-1.2). Checking which member is Active..." DarkGray
         $hostName = Get-ActiveGateway; Say "Active member: $hostName" Green
+    } elseif ($lab -eq "lab4a") {
+        Say "Finding the gateway where lab 4A is running..." DarkGray
+        $hostName = $null
+        foreach ($g in "A-GW-01", "A-GW-02") {
+            $t = $null
+            try { $t = Open-Gaia $g; if ((Invoke-Read $t "pgrep -x lab4a_start >/dev/null && echo RUNNING") -match "RUNNING") { $hostName = $g } } catch { } finally { Close-Gaia $t }
+            if ($hostName) { break }
+        }
+        if (-not $hostName) { $hostName = Get-ActiveGateway; Say "Lab 4A is not running on either gateway; using the Active member $hostName." Yellow }
+        else { Say "Lab 4A is running on $hostName." Green }
     }
     $s = $null
     try {
@@ -199,6 +209,12 @@ function Run-Simple([string]$lab, [string]$action) {
         $st = $s.Buf.Length
         $rc = Invoke-LabCmd $s ("lab{0} {1}" -f $action, $lab)
         $didSetup = $s.Buf.ToString($st, $s.Buf.Length - $st) -match "Setup completed"
+        if ($lab -eq "lab4a" -and $action -ne "start" -and $rc -eq 0 -and $s.Buf.ToString($st, $s.Buf.Length - $st) -notmatch "4A-4\.2") {
+            Say ""
+            Say "Next (lab guide step 4A-4.2): start CPD again on $hostName. In an SSH session to $hostName (Expert mode):" Cyan
+            Say '    cpwd_admin start -name CPD -path "$CPDIR/bin/cpd" -command "cpd"' Cyan
+            Say "then check it with: cpwd_admin list" Cyan
+        }
         if ($rc -eq 0) { Say "Finished (exit code 0)." Green } elseif ($rc -eq -1) { Say "No answer from $hostName within the time limit." Red } else { Say "Finished with exit code $rc - read the messages above." Yellow }
         if ($api -and ($rc -eq 0 -or $rc -eq 2) -and $didSetup) { Show-InstallResults $s $since $lab $action }
         elseif ($api -and ($rc -eq 0 -or $rc -eq 2)) { Say "No policy installation was started (nothing was changed)." DarkGray }

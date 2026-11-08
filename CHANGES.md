@@ -1,3 +1,10 @@
+# Appliance scripts 2.2.4 and A-GUI lab menu 1.0.4 (8 Nov 2026)
+
+| File | Change |
+| --- | --- |
+| `GW/lab4a_stop` | After "Setup completed", reminds you of lab guide step 4A-4.2: the stop script ends the kill loop but does not start CPD; the student starts it with `cpwd_admin start -name CPD -path "$CPDIR/bin/cpd" -command "cpd"`. Without it, management cannot reach the gateway and policy installs to A-GW-Cluster fail |
+| `agui/CCTE-LabMenu.ps1` | Shows the same 4A-4.2 reminder (also with the original scripts). Lab 4A Stop and Revert now run on the gateway where lab 4A is actually running |
+
 # Appliance scripts 2.2.3 and A-GUI lab menu 1.0.3 (8 Nov 2026)
 
 | File | Change |
