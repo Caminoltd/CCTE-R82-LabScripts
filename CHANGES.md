@@ -1,3 +1,10 @@
+# Appliance scripts 2.2.3 and A-GUI lab menu 1.0.3 (8 Nov 2026)
+
+| File | Change |
+| --- | --- |
+| `labmenu` (appliances) | After Start, Stop or Revert of labs 5A, 6A, 8A and 9A, waits for policy installations only when the script printed "Setup completed". A second run ("already set up") starts no installation, and the menu used to wait about 2 minutes for one before showing an empty result. Now it says "No policy installation was started (nothing was changed)." |
+| `agui/CCTE-LabMenu.ps1` | Same fix in the A-GUI menu |
+
 # A-GUI lab menu 1.0.2 (8 Nov 2026)
 
 Shows "Connecting to <host> ... ok" for every SSH login (each takes about 12 seconds), says when an

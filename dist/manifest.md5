@@ -1,4 +1,4 @@
-02fdf3f1762145f951adfd96fe659271  SMS/VERSION
+d08e6a23a9ff9de3eb1d62998c7fdd62  SMS/VERSION
 2891a2a8fb2fbec4e2976a6b33ac07ff  SMS/lab2a_start
 71ed1e5cdf235c75fad3810c4723eac4  SMS/lab2a_stop
 f223f78a6731b1e6aadfdb925983ea20  SMS/lab2b_revert
@@ -16,15 +16,15 @@ e676e83c47ea93a232a73cfcc9b748b8  SMS/lab6a_stop
 10b5d826e0461e2da30415528965070f  SMS/lab9a_start
 2664916db834cb22b18d2bc187c6353f  SMS/lab9a_stop
 62469c7b05af3e01c31a57b100deab96  SMS/lab_script_functions
-c6f760b6418a950d2a98bf408d2a2d80  SMS/labmenu
+3a95f1be959e31de543c5c028bca52b7  SMS/labmenu
 2b7230f553cd618ddf919b8e37945a79  SMS/labrevert
 db72409ef2e8df83c794a529a8e9ee5c  SMS/labstart
 2b7230f553cd618ddf919b8e37945a79  SMS/labstop
-02fdf3f1762145f951adfd96fe659271  GW/VERSION
+d08e6a23a9ff9de3eb1d62998c7fdd62  GW/VERSION
 34377742bce168752819deb25d348b2b  GW/lab4a_start
 1d4e76ee8833d9b1bf3b0deb42242c11  GW/lab4a_stop
 62469c7b05af3e01c31a57b100deab96  GW/lab_script_functions
-c6f760b6418a950d2a98bf408d2a2d80  GW/labmenu
+3a95f1be959e31de543c5c028bca52b7  GW/labmenu
 2b7230f553cd618ddf919b8e37945a79  GW/labrevert
 db72409ef2e8df83c794a529a8e9ee5c  GW/labstart
 2b7230f553cd618ddf919b8e37945a79  GW/labstop

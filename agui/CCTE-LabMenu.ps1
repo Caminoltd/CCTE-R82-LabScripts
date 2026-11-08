@@ -20,7 +20,7 @@ param(
     [string]$User = "admin"
 )
 
-$Version = "1.0.2"
+$Version = "1.0.3"
 $Hosts = [ordered]@{ "A-SMS" = "10.1.1.101"; "A-SMS-02" = "10.1.1.111"; "A-GW-01" = "10.1.1.2"; "A-GW-02" = "10.1.1.3" }
 $ApiLabs = @("lab5a", "lab6a", "lab8a", "lab9a")
 $Labs = [ordered]@{
@@ -196,9 +196,12 @@ function Run-Simple([string]$lab, [string]$action) {
         $api = $ApiLabs -contains $lab
         if ($api) { Wait-Installs $s }
         $since = [int](Invoke-Read $s "date +%s")
+        $st = $s.Buf.Length
         $rc = Invoke-LabCmd $s ("lab{0} {1}" -f $action, $lab)
+        $didSetup = $s.Buf.ToString($st, $s.Buf.Length - $st) -match "Setup completed"
         if ($rc -eq 0) { Say "Finished (exit code 0)." Green } elseif ($rc -eq -1) { Say "No answer from $hostName within the time limit." Red } else { Say "Finished with exit code $rc - read the messages above." Yellow }
-        if ($api -and ($rc -eq 0 -or $rc -eq 2)) { Show-InstallResults $s $since $lab $action }
+        if ($api -and ($rc -eq 0 -or $rc -eq 2) -and $didSetup) { Show-InstallResults $s $since $lab $action }
+        elseif ($api -and ($rc -eq 0 -or $rc -eq 2)) { Say "No policy installation was started (nothing was changed)." DarkGray }
     } catch { Say $_.Exception.Message Red } finally { Close-Gaia $s }
 }
 

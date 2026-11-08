@@ -4,7 +4,7 @@
 # Description: Menu for the CCTE R82 lab scripts. Runs exactly the lab guide commands
 #              (./labstart, ./labstop, ./labrevert <lab>) so students see the same thing.
 # Usage:       labmenu            (from Expert mode on A-SMS, A-SMS-02, A-GW-01 or A-GW-02)
-# Version:     2.2.2 (see CHANGES.md)
+# Version:     2.2.3 (see CHANGES.md)
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 cd "$SCRIPT_DIR" || { echo "Cannot open $SCRIPT_DIR"; exit 1; }
@@ -128,15 +128,25 @@ run_cmd() {
     t0=$(date +%s)
     echo "${B}Running:${N} $cmd      (the same command as in the lab guide)"
     echo
-    ./"$1" "$2" $VERBOSE_FLAG
-    local rc=$?
+    local api=false
+    grep -q 'install-policy' "./${2}_${1#lab}" 2>/dev/null && api=true
+    if [[ "$api" == true ]]; then
+        # Keep a copy of the output to see whether the script got as far as installing policy
+        ./"$1" "$2" $VERBOSE_FLAG 2>&1 | tee /tmp/labmenu.last
+        local rc=${PIPESTATUS[0]}
+    else
+        ./"$1" "$2" $VERBOSE_FLAG
+        local rc=$?
+    fi
     echo
     if [[ $rc -eq 0 ]]; then echo "${G}Finished (exit code 0).${N}"
     elif [[ $rc -eq 130 ]]; then echo "${Y}Interrupted.${N}"
     else echo "${Y}Finished with exit code $rc - read the messages above.${N}"; fi
     if is_background "$2" && [[ "$1" == "labstart" ]]; then
         sleep 1; echo "$2 is now $(bg_state "$2") in the background."
-    elif [[ "$HAS_API" == true && ( $rc -eq 0 || $rc -eq 2 ) ]] && grep -q 'install-policy' "./${2}_${1#lab}" 2>/dev/null; then
+    elif [[ "$api" == true && ( $rc -eq 0 || $rc -eq 2 ) ]] && ! grep -q 'Setup completed' /tmp/labmenu.last 2>/dev/null; then
+        echo "No policy installation was started (nothing was changed)."
+    elif [[ "$HAS_API" == true && "$api" == true && ( $rc -eq 0 || $rc -eq 2 ) ]]; then
         echo
         # The script starts the installs about 20-30 s after it publishes: wait for them to appear, then to finish
         echo -n "Waiting for the policy installations to start "
